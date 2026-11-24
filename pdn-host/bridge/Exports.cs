@@ -79,15 +79,16 @@ internal static unsafe class Exports
 
     [UnmanagedCallersOnly(EntryPoint = "PdnLoadPlugin")]
     public static IntPtr PdnLoadPlugin(byte* dllPath, byte** outError)
-        => Guard(outError, IntPtr.Zero, () =>
+        => Guard(outError, IntPtr.Zero, () => PluginUIThread.Invoke(() =>
         {
             var ctx = PluginHost.Load(Str(dllPath)!);
             return GCHandle.ToIntPtr(GCHandle.Alloc(ctx));
-        });
+        }));
 
     [UnmanagedCallersOnly(EntryPoint = "PdnEnumerate")]
     public static byte* PdnEnumerate(IntPtr plugin, byte** outError)
-        => (byte*)Guard(outError, IntPtr.Zero, () => In(plugin, ctx => AllocUtf8(PluginHost.Enumerate(ctx))));
+        => (byte*)Guard(outError, IntPtr.Zero, () => PluginUIThread.Invoke(
+            () => In(plugin, ctx => AllocUtf8(PluginHost.Enumerate(ctx)))));
 
     [UnmanagedCallersOnly(EntryPoint = "PdnEffectSchema")]
     public static byte* PdnEffectSchema(IntPtr plugin, byte* effectId, byte** outError)
@@ -183,7 +184,7 @@ internal static unsafe class Exports
     [UnmanagedCallersOnly(EntryPoint = "PdnFileTypeSave")]
     public static byte* PdnFileTypeSave(IntPtr plugin, int ftIndex, byte* propsJson,
                                         byte* bgra, int width, int height, int* outLen, byte** outError)
-        => (byte*)Guard(outError, IntPtr.Zero, () =>
+        => (byte*)Guard(outError, IntPtr.Zero, () => PluginUIThread.Invoke(() =>
         {
             int n = checked(width * height * 4);
             var buf = new byte[n];
@@ -191,12 +192,12 @@ internal static unsafe class Exports
             byte[] encoded = In(plugin, ctx => FileTypeDriver.Save(ctx, ftIndex, Str(propsJson), buf, width, height));
             *outLen = encoded.Length;
             return AllocBytes(encoded);
-        });
+        }));
 
     [UnmanagedCallersOnly(EntryPoint = "PdnFileTypeOpen")]
     public static int PdnFileTypeOpen(IntPtr plugin, int ftIndex, byte* bytes, int len, byte* propsJson,
                                       byte** outBgra, int* outWidth, int* outHeight, byte** outError)
-        => Guard(outError, 0, () =>
+        => Guard(outError, 0, () => PluginUIThread.Invoke(() =>
         {
             var input = new byte[len];
             new Span<byte>(bytes, len).CopyTo(input);
@@ -205,7 +206,7 @@ internal static unsafe class Exports
             *outWidth = w;
             *outHeight = h;
             return 0;
-        });
+        }));
 
     /// The whole permission grant set paint.rs holds (replacing the last), as JSON per the gate protocol; set
     /// after init and on every change. A call a plug-in makes to a gated capability with no grant fails so

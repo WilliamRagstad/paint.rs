@@ -1248,6 +1248,14 @@ namespace PaintDotNet.Rendering
 
 namespace PaintDotNet.AppModel
 {
+    /// UI-thread service requested by FileType plugins before they show import or export windows.
+    public interface IUISynchronizationContext : PaintDotNet.ComponentModel.IInternalImpl
+    {
+        bool IsOnUIThread { get; }
+        void Post(System.Threading.SendOrPostCallback callback, object? state);
+        void Send(System.Threading.SendOrPostCallback callback, object? state);
+    }
+
     /// Paint.NET 5's plug-in descriptor. Only the members a plug-in reads are declared; the real type's internal-only
     /// getters are omitted. IEffectInfo2 extends this.
     public interface IPluginInfo : PaintDotNet.ComponentModel.IObjectRef, System.IDisposable, PaintDotNet.IIsDisposed, System.IEquatable<IPluginInfo>, PaintDotNet.ComponentModel.IInternalImpl

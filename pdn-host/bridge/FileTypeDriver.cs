@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using PaintDotNet.AppModel;
 using PaintDotNet.FileTypes;
 using PaintDotNet.FileTypeHost;   // Host, HostDocument, HostFtDocument (reused upstream classes)
 using PaintDotNet.IndirectUI;
@@ -38,10 +39,20 @@ internal static class FileTypeDriver
     private sealed class ClassicHost : Classic.IFileTypeHost, IServiceProvider
     {
         public static readonly ClassicHost Instance = new();
+        private static readonly IUISynchronizationContext UiSynchronizationContext = new PluginUISynchronizationContext();
         public IServiceProvider Services => this;
         public object? GetService(Type serviceType)
             => serviceType == typeof(Classic.IFileTypesService) ? Classic.BuiltInFileTypes.Instance
+             : serviceType == typeof(IUISynchronizationContext) ? UiSynchronizationContext
              : PaintDotNet.Effects.EffectServices.Instance.GetService(serviceType);
+    }
+
+    /// FileType windows are captured by FileTypeWindows rather than displayed as native WinForms windows.
+    private sealed class PluginUISynchronizationContext : IUISynchronizationContext
+    {
+        public bool IsOnUIThread => PluginUIThread.IsOnUIThread;
+        public void Post(System.Threading.SendOrPostCallback callback, object? state) => PluginUIThread.Post(callback, state);
+        public void Send(System.Threading.SendOrPostCallback callback, object? state) => PluginUIThread.Send(callback, state);
     }
 
     public static void WriteInfo(Utf8JsonWriter jw, object ftObj)

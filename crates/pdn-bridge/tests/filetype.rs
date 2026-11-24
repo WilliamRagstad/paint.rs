@@ -128,3 +128,49 @@ fn classic_filetype_roundtrip() {
         assert_eq!(back, rgba, "the PSP round trip changed pixels ({opts:?})");
     }
 }
+
+/// The official SVG FileType asks Paint.NET for a UI synchronization service while opening its import window.
+/// This opt-in integration test verifies paint.rs supplies that service. Opening may then reach another platform
+/// dependency, such as the Linux GDI+ runtime, which this test environment does not bundle.
+/// Set `PDN_SVG_DLL` to a locally installed `SvgFileType.dll`; the plugin is not redistributed with the repository.
+/// Run with `cargo test -p pdn-bridge --test filetype svg_filetype_resolves_ui_sync_context -- --ignored --nocapture`.
+#[test]
+#[ignore = "requires a local SvgFileType.dll and a published Paint.NET plugin bridge"]
+fn svg_filetype_resolves_ui_sync_context() {
+    let dll = std::env::var_os("PDN_SVG_DLL")
+        .map(PathBuf::from)
+        .expect("set PDN_SVG_DLL to an installed SvgFileType.dll");
+    let bridge_dir = std::env::var("PDN_BRIDGE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo_rel("pdn-host/bridge/bin/Release/net11.0"));
+    assert!(dll.exists(), "PDN_SVG_DLL does not exist: {}", dll.display());
+    assert!(bridge_dir.join("PdnBridge.dll").exists(), "bridge DLL is missing: {}", bridge_dir.display());
+
+    let host = pdn_bridge::Host::start(&bridge_dir).expect("start CoreCLR");
+    let plugin = host.load_plugin(&dll).expect("load SVG plugin");
+    let json = plugin.enumerate().expect("enumerate SVG plugin");
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let file_types = parsed["fileTypes"].as_array().expect("fileTypes array");
+    let index = file_types
+        .iter()
+        .position(|file_type| {
+            file_type["loadExtensions"]
+                .as_array()
+                .is_some_and(|extensions| extensions.iter().any(|extension| extension == ".svg"))
+        })
+        .expect("SVG load extension") as u32;
+
+    let svg = br##"<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="#f00"/></svg>"##;
+    if let Err(error) = plugin.filetype_open(index, svg, None) {
+        assert!(
+            !error.0.contains("IUISynchronizationContext"),
+            "SVG open could not resolve its UI synchronization service: {}",
+            error.0
+        );
+        assert!(
+            error.0.starts_with("pdn-window:") || error.0.contains("KERNEL32.dll"),
+            "SVG open stopped for an unexpected reason: {}",
+            error.0
+        );
+    }
+}
